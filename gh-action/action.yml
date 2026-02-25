@@ -1,0 +1,81 @@
+name: "SEO Audit Action"
+description: "Run SEO audits on your site and fail builds if the score drops below a threshold. Powered by SEO Score API."
+author: "SeoScoreAPI"
+branding:
+  icon: "search"
+  color: "blue"
+
+inputs:
+  url:
+    description: "URL to audit"
+    required: true
+  api-key:
+    description: "SEO Score API key (get one free at seoscoreapi.com)"
+    required: true
+  threshold:
+    description: "Minimum score to pass (0-100)"
+    required: false
+    default: "80"
+  fail-on-threshold:
+    description: "Fail the build if score is below threshold"
+    required: false
+    default: "true"
+
+outputs:
+  score:
+    description: "SEO score (0-100)"
+  grade:
+    description: "Letter grade (A+ to F)"
+  issues:
+    description: "Number of issues found"
+  report-url:
+    description: "Link to full report"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run SEO Audit
+      shell: bash
+      run: |
+        RESULT=$(curl -sf -H "X-API-Key: ${{ inputs.api-key }}" \
+          "https://seoscoreapi.com/audit?url=${{ inputs.url }}")
+
+        if [ $? -ne 0 ]; then
+          echo "::error::Failed to reach SEO Score API"
+          exit 1
+        fi
+
+        SCORE=$(echo "$RESULT" | jq -r '.score')
+        GRADE=$(echo "$RESULT" | jq -r '.grade')
+        ISSUES=$(echo "$RESULT" | jq -r '.priorities | length')
+        DOMAIN=$(echo "${{ inputs.url }}" | sed 's|https\?://||' | sed 's|/.*||')
+
+        echo "score=$SCORE" >> $GITHUB_OUTPUT
+        echo "grade=$GRADE" >> $GITHUB_OUTPUT
+        echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+        echo "report-url=https://seoscoreapi.com/report/$DOMAIN" >> $GITHUB_OUTPUT
+
+        echo "## 🔍 SEO Audit Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| URL | ${{ inputs.url }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Score | **$SCORE/100** |" >> $GITHUB_STEP_SUMMARY
+        echo "| Grade | **$GRADE** |" >> $GITHUB_STEP_SUMMARY
+        echo "| Issues | $ISSUES |" >> $GITHUB_STEP_SUMMARY
+        echo "| Threshold | ${{ inputs.threshold }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Full Report | [View →](https://seoscoreapi.com/report/$DOMAIN) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$ISSUES" -gt 0 ]; then
+          echo "### Top Issues" >> $GITHUB_STEP_SUMMARY
+          echo "$RESULT" | jq -r '.priorities[:5][] | "- **[\(.severity)]** \(.issue)"' >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo ""
+        echo "SEO Score: $SCORE/100 ($GRADE) — $ISSUES issues"
+
+        if [ "${{ inputs.fail-on-threshold }}" = "true" ] && [ "$SCORE" -lt "${{ inputs.threshold }}" ]; then
+          echo "::error::SEO score $SCORE is below threshold ${{ inputs.threshold }}"
+          exit 1
+        fi
