@@ -45,6 +45,37 @@ runs:
           exit 1
         fi
 
-        SCORE=$(echo "$RESULT" | jq -r .score)
-        GRADE=$(echo "$RESULT" | jq -r .grade)
-        ISSUES=$(echo "$RESULT" | jq -r .priorities
+        SCORE=$(echo "$RESULT" | jq -r '.score')
+        GRADE=$(echo "$RESULT" | jq -r '.grade')
+        ISSUES=$(echo "$RESULT" | jq -r '.priorities | length')
+        DOMAIN=$(echo "${{ inputs.url }}" | sed 's|https\?://||' | sed 's|/.*||')
+
+        echo "score=$SCORE" >> $GITHUB_OUTPUT
+        echo "grade=$GRADE" >> $GITHUB_OUTPUT
+        echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+        echo "report-url=https://seoscoreapi.com/report/$DOMAIN" >> $GITHUB_OUTPUT
+
+        echo "## 🔍 SEO Audit Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| URL | ${{ inputs.url }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Score | **$SCORE/100** |" >> $GITHUB_STEP_SUMMARY
+        echo "| Grade | **$GRADE** |" >> $GITHUB_STEP_SUMMARY
+        echo "| Issues | $ISSUES |" >> $GITHUB_STEP_SUMMARY
+        echo "| Threshold | ${{ inputs.threshold }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Full Report | [View →](https://seoscoreapi.com/report/$DOMAIN) |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$ISSUES" -gt 0 ]; then
+          echo "### Top Issues" >> $GITHUB_STEP_SUMMARY
+          echo "$RESULT" | jq -r '.priorities[:5][] | "- **[\(.severity)]** \(.issue)"' >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo ""
+        echo "SEO Score: $SCORE/100 ($GRADE) — $ISSUES issues"
+
+        if [ "${{ inputs.fail-on-threshold }}" = "true" ] && [ "$SCORE" -lt "${{ inputs.threshold }}" ]; then
+          echo "::error::SEO score $SCORE is below threshold ${{ inputs.threshold }}"
+          exit 1
+        fi

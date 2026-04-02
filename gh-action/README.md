@@ -70,7 +70,7 @@ jobs:
 ## Getting an API Key
 
 1. Visit [seoscoreapi.com](https://seoscoreapi.com)
-2. Sign up for a free key (5 audits/day) or a paid plan
+2. Sign up for a free key (2 audits/day) or a paid plan
 3. Add as `SEO_SCORE_API_KEY` in your repo secrets
 
 ## What Gets Checked
