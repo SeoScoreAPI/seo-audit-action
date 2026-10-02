@@ -60,6 +60,7 @@ respond 200 '{"job_id":"abc","status":"queued"}'
 respond 200 '{"status":"queued","queue_position":1}'
 respond 200 '{"status":"running","progress":50,"stage":"Section 4"}'
 respond 200 "$DONE"
+respond 200 '{"tier":"pro","site_audit":{"used":3,"remaining":17}}'
 run SSA_BUSINESS_TYPE=saas; rc=$?
 check "completes with exit 0" test "$rc" = 0
 check "starts on the main host" grep -q '^POST https://seoscoreapi.com/site-audit {"url":"https://example.com","business_type":"saas"}$' "$T/log"
@@ -68,6 +69,8 @@ check "writes score output" grep -qx 'deep-audit-score=3.23' "$T/out"
 check "writes job id output" grep -qx 'deep-audit-job-id=abc' "$T/out"
 check "counts high findings" grep -qx 'deep-audit-high-findings=1' "$T/out"
 check "summary lists findings" grep -q 'No XML sitemap found' "$T/summary"
+check "reads usage on the main host" grep -q '^GET https://seoscoreapi.com/deep-audit/usage' "$T/log"
+check "writes remaining output" grep -qx 'deep-audit-remaining=17' "$T/out"
 
 # 2. Base URL override + 429 backpressure
 setup
@@ -78,6 +81,8 @@ run SSA_BASE_URL="https://engine.seoscoreapi.com/"; rc=$?
 check "retries after 429" test "$(grep -c '^POST' "$T/log")" = 2
 check "honours base URL override" grep -q '^GET https://engine.seoscoreapi.com/site-audit/xyz' "$T/log"
 check "override run exits 0" test "$rc" = 0
+check "legacy engine host reads /usage" grep -q '^GET https://engine.seoscoreapi.com/usage' "$T/log"
+check "missing usage leaves remaining empty" grep -qx 'deep-audit-remaining=' "$T/out"
 
 # 3. Failed job
 setup
@@ -100,7 +105,15 @@ respond 200 "$DONE"
 run SSA_FAIL_ON_HIGH=true; rc=$?
 check "fail-on-high exits 1 when high findings" test "$rc" = 1
 
-# 6. Timeout
+# 6. Unknown job fails fast instead of polling until the timeout
+setup
+respond 200 '{"job_id":"gone"}'
+respond 404 '{"detail":"Job not found"}'
+run; rc=$?
+check "poll 404 exits 1 with the detail" bash -c "[ $rc = 1 ] && grep -q 'Job not found' '$T/stdout'"
+check "poll 404 does not retry" test "$(grep -c '^GET' "$T/log")" = 1
+
+# 7. Timeout
 setup
 respond 200 '{"job_id":"abc"}'
 run SSA_TIMEOUT=-1; rc=$?

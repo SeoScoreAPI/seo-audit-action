@@ -41,6 +41,7 @@ Powered by [SEO Score API](https://seoscoreapi.com): 80+ checks across meta, tec
 | `deep-audit-grade` | Deep Site Audit grade (`lai_grade`) |
 | `deep-audit-high-findings` | Number of high/critical findings |
 | `deep-audit-job-id` | Job ID, for `GET https://seoscoreapi.com/site-audit/{job_id}` |
+| `deep-audit-remaining` | Deep Site Audits left this month after this run |
 
 ## Deep Site Audit
 
@@ -49,7 +50,8 @@ Set `deep-audit: true` to also run a Deep Site Audit: thousands of catalog check
 `https://seoscoreapi.com`, polls `GET /site-audit/{job_id}` until it completes (about 90
 seconds once it starts; retries on queue backpressure), then adds the score and the top
 findings to the job summary. Included on Pro (20/month) and Ultra (100/month); other keys
-spend a purchased Deep Audit credit. Check what's left with
+spend a purchased Deep Audit credit. The `deep-audit-remaining` output reports what's left
+after the run; to check by hand:
 `curl -H "X-API-Key: $KEY" https://seoscoreapi.com/deep-audit/usage`.
 
 ```yaml

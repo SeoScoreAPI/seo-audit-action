@@ -63,6 +63,9 @@ outputs:
   deep-audit-high-findings:
     description: "Number of high/critical Deep Site Audit findings"
     value: ${{ steps.deep.outputs.deep-audit-high-findings }}
+  deep-audit-remaining:
+    description: "Deep Site Audits left this month after this run (from GET /deep-audit/usage)"
+    value: ${{ steps.deep.outputs.deep-audit-remaining }}
   deep-audit-job-id:
     description: "Deep Site Audit job ID (poll GET /site-audit/{job_id} for the full result)"
     value: ${{ steps.deep.outputs.deep-audit-job-id }}

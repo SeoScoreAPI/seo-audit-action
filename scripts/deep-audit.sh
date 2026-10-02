@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deep Site Audit for the SEO Audit Action.
 # Starts POST {base}/site-audit, polls GET {base}/site-audit/{job_id} until it
-# completes, writes outputs + a job summary. Inputs come from the environment:
+# completes, reads the quota left (GET {base}/deep-audit/usage), writes outputs
+# + a job summary. Inputs come from the environment:
 #   SSA_URL, SSA_API_KEY            required
 #   SSA_BASE_URL                    default https://seoscoreapi.com
 #   SSA_BUSINESS_TYPE               optional (saas | local_service | ecommerce | ...)
@@ -65,10 +66,13 @@ while :; do
   sleep "$POLL"
   code=$(curl -sS -o "$tmp" -w '%{http_code}' "$BASE/site-audit/$job_id" \
     -H "X-API-Key: $SSA_API_KEY" -H "User-Agent: seo-audit-action/1.1.0") || code=000
-  if [ "$code" != "200" ]; then
-    echo "Deep audit poll returned HTTP $code; retrying"
-    continue
-  fi
+  case "$code" in
+    200) ;;
+    401|403|404)
+      echo "::error::Deep audit poll for $job_id failed (HTTP $code): $(jq -r '.detail // "no detail"' "$tmp" 2>/dev/null || echo "no detail")"
+      exit 1 ;;
+    *) echo "Deep audit poll returned HTTP $code; retrying"; continue ;;
+  esac
   status=$(jq -r '.status' "$tmp")
   case "$status" in
     completed) break ;;
@@ -83,7 +87,17 @@ score=$(jq -r '.result.scores.lai_score // empty' "$tmp")
 grade=$(jq -r '.result.scores.lai_grade // empty' "$tmp")
 high=$(jq '[.result.findings[]? | select(.severity == "high" or .severity == "critical")] | length' "$tmp")
 total=$(jq '[.result.findings[]?] | length' "$tmp")
+# Quota left after this run (best effort; never fails the step). The main host
+# serves it at /deep-audit/usage; the legacy engine host at /usage.
+case "${BASE#*://}" in engine.*) usage_path=/usage ;; *) usage_path=/deep-audit/usage ;; esac
+remaining=""
+ucode=$(curl -sS -o "$hdr" -w '%{http_code}' "$BASE$usage_path" \
+  -H "X-API-Key: $SSA_API_KEY" -H "User-Agent: seo-audit-action/1.1.0") || ucode=000
+if [ "$ucode" = "200" ]; then
+  remaining=$(jq -r '.site_audit.remaining // empty' "$hdr" 2>/dev/null || true)
+fi
 {
+  echo "deep-audit-remaining=$remaining"
   echo "deep-audit-score=$score"
   echo "deep-audit-grade=$grade"
   echo "deep-audit-high-findings=$high"
@@ -97,6 +111,7 @@ total=$(jq '[.result.findings[]?] | length' "$tmp")
   echo "| URL | $SSA_URL |"
   echo "| Score | **$score** ($grade) |"
   echo "| High/critical findings | $high of $total |"
+  [ -n "$remaining" ] && echo "| Deep Audits left this month | $remaining |"
   echo ""
   if [ "$total" -gt 0 ]; then
     echo "### Top findings"
