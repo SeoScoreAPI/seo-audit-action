@@ -2,7 +2,7 @@
 
 Run automated SEO audits on your website as part of your CI/CD pipeline. Catch SEO regressions before they ship to production.
 
-Powered by [SEO Score API](https://seoscoreapi.com) — 28 checks across meta, technical, social, performance, and accessibility.
+Powered by [SEO Score API](https://seoscoreapi.com): 80+ checks across meta, technical, social, performance, accessibility and AI readability, plus an optional **Deep Site Audit**.
 
 ## Usage
 
@@ -23,6 +23,11 @@ Powered by [SEO Score API](https://seoscoreapi.com) — 28 checks across meta, t
 | `api-key` | Yes | — | API key from [seoscoreapi.com](https://seoscoreapi.com) |
 | `threshold` | No | `80` | Minimum score to pass (0-100) |
 | `fail-on-threshold` | No | `true` | Fail build if below threshold |
+| `deep-audit` | No | `false` | Also run a Deep Site Audit (Pro/Ultra, or a Deep Audit credit) |
+| `deep-audit-business-type` | No | — | `saas` \| `local_service` \| `ecommerce` \| `storefront` \| `blog` \| `publisher` |
+| `deep-audit-timeout` | No | `600` | Seconds to wait for the Deep Site Audit |
+| `deep-audit-fail-on-high` | No | `false` | Fail the build on any high/critical Deep Site Audit finding |
+| `deep-audit-base-url` | No | `https://seoscoreapi.com` | Deep Site Audit host override (proxy, or the legacy `https://engine.seoscoreapi.com`) |
 
 ## Outputs
 
@@ -32,6 +37,40 @@ Powered by [SEO Score API](https://seoscoreapi.com) — 28 checks across meta, t
 | `grade` | Letter grade (A+ to F) |
 | `issues` | Number of issues found |
 | `report-url` | Link to full report |
+| `deep-audit-score` | Deep Site Audit score (`lai_score`) |
+| `deep-audit-grade` | Deep Site Audit grade (`lai_grade`) |
+| `deep-audit-high-findings` | Number of high/critical findings |
+| `deep-audit-job-id` | Job ID, for `GET https://seoscoreapi.com/site-audit/{job_id}` |
+| `deep-audit-remaining` | Deep Site Audits left this month after this run |
+
+## Deep Site Audit
+
+Set `deep-audit: true` to also run a Deep Site Audit: thousands of catalog checks across
+9 dimensions plus an AI analysis pass. It starts `POST /site-audit` on
+`https://seoscoreapi.com`, polls `GET /site-audit/{job_id}` until it completes (about 90
+seconds once it starts; retries on queue backpressure), then adds the score and the top
+findings to the job summary. Included on Pro (20/month) and Ultra (100/month); other keys
+spend a purchased Deep Audit credit. The `deep-audit-remaining` output reports what's left
+after the run; to check by hand:
+`curl -H "X-API-Key: $KEY" https://seoscoreapi.com/deep-audit/usage`.
+
+```yaml
+- name: SEO + Deep Site Audit
+  id: seo
+  uses: SeoScoreAPI/seo-audit-action@v1
+  with:
+    url: "https://your-site.com"
+    api-key: ${{ secrets.SEO_SCORE_API_KEY }}
+    threshold: 85
+    deep-audit: true
+    deep-audit-business-type: saas
+    deep-audit-fail-on-high: true
+
+- run: echo "Deep audit ${{ steps.seo.outputs.deep-audit-score }} (${{ steps.seo.outputs.deep-audit-high-findings }} high findings)"
+```
+
+Deep audits cost quota, so run them on pushes to `main` or on a schedule rather than on
+every pull request.
 
 ## Example: Full Workflow with PR Comments
 
@@ -69,7 +108,7 @@ jobs:
 
 ## What Gets Checked
 
-28 checks across 5 categories:
+The standard audit covers, among others:
 
 - **Meta & Content** — title, description, headings, readability, alt text
 - **Technical** — HTTPS, SSL, canonical, structured data, sitemap
@@ -97,6 +136,7 @@ jobs:
 
 - [Website](https://seoscoreapi.com)
 - [API Docs](https://seoscoreapi.com/docs)
+- [Changelog](CHANGELOG.md)
 - [Blog: GitHub Actions SEO Guide](https://seoscoreapi.com/blog/github-actions-seo-audit)
 
 ## License
