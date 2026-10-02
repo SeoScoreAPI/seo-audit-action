@@ -1,5 +1,5 @@
 name: "SEO Audit Action"
-description: "Run SEO audits on your site and fail builds if the score drops below a threshold. Powered by SEO Score API."
+description: "Run SEO audits (and optional Deep Site Audits) on your site and fail builds if the score drops below a threshold. Powered by SEO Score API."
 author: "SeoScoreAPI"
 branding:
   icon: "search"
@@ -20,27 +20,67 @@ inputs:
     description: "Fail the build if score is below threshold"
     required: false
     default: "true"
+  deep-audit:
+    description: "Also run a Deep Site Audit (Pro/Ultra plans, or a purchased Deep Audit credit). Takes about 90 seconds once it starts."
+    required: false
+    default: "false"
+  deep-audit-business-type:
+    description: "Optional: saas | local_service | ecommerce | storefront | blog | publisher (tunes which checks apply)"
+    required: false
+    default: ""
+  deep-audit-timeout:
+    description: "Seconds to wait for the Deep Site Audit before failing"
+    required: false
+    default: "600"
+  deep-audit-fail-on-high:
+    description: "Fail the build if the Deep Site Audit reports any high or critical finding"
+    required: false
+    default: "false"
+  deep-audit-base-url:
+    description: "Deep Site Audit host. Leave as is unless you use a proxy (the legacy https://engine.seoscoreapi.com also works)."
+    required: false
+    default: "https://seoscoreapi.com"
 
 outputs:
   score:
     description: "SEO score (0-100)"
+    value: ${{ steps.audit.outputs.score }}
   grade:
     description: "Letter grade (A+ to F)"
+    value: ${{ steps.audit.outputs.grade }}
   issues:
     description: "Number of issues found"
+    value: ${{ steps.audit.outputs.issues }}
   report-url:
     description: "Link to full report"
+    value: ${{ steps.audit.outputs.report-url }}
+  deep-audit-score:
+    description: "Deep Site Audit score (lai_score), when deep-audit is true"
+    value: ${{ steps.deep.outputs.deep-audit-score }}
+  deep-audit-grade:
+    description: "Deep Site Audit grade (lai_grade), when deep-audit is true"
+    value: ${{ steps.deep.outputs.deep-audit-grade }}
+  deep-audit-high-findings:
+    description: "Number of high/critical Deep Site Audit findings"
+    value: ${{ steps.deep.outputs.deep-audit-high-findings }}
+  deep-audit-job-id:
+    description: "Deep Site Audit job ID (poll GET /site-audit/{job_id} for the full result)"
+    value: ${{ steps.deep.outputs.deep-audit-job-id }}
 
 runs:
   using: "composite"
   steps:
     - name: Run SEO Audit
+      id: audit
       shell: bash
+      env:
+        SSA_URL: ${{ inputs.url }}
+        SSA_API_KEY: ${{ inputs.api-key }}
+        SSA_THRESHOLD: ${{ inputs.threshold }}
+        SSA_FAIL: ${{ inputs.fail-on-threshold }}
       run: |
-        RESULT=$(curl -sf -H "X-API-Key: ${{ inputs.api-key }}" \
-          "https://seoscoreapi.com/audit?url=${{ inputs.url }}")
-
-        if [ $? -ne 0 ]; then
+        if ! RESULT=$(curl -sf -G -H "X-API-Key: $SSA_API_KEY" \
+          --data-urlencode "url=$SSA_URL" "https://seoscoreapi.com/audit"); then
           echo "::error::Failed to reach SEO Score API"
           exit 1
         fi
@@ -48,34 +88,49 @@ runs:
         SCORE=$(echo "$RESULT" | jq -r '.score')
         GRADE=$(echo "$RESULT" | jq -r '.grade')
         ISSUES=$(echo "$RESULT" | jq -r '.priorities | length')
-        DOMAIN=$(echo "${{ inputs.url }}" | sed 's|https\?://||' | sed 's|/.*||')
+        DOMAIN=$(echo "$SSA_URL" | sed 's|https\?://||' | sed 's|/.*||')
 
-        echo "score=$SCORE" >> $GITHUB_OUTPUT
-        echo "grade=$GRADE" >> $GITHUB_OUTPUT
-        echo "issues=$ISSUES" >> $GITHUB_OUTPUT
-        echo "report-url=https://seoscoreapi.com/report/$DOMAIN" >> $GITHUB_OUTPUT
+        echo "score=$SCORE" >> "$GITHUB_OUTPUT"
+        echo "grade=$GRADE" >> "$GITHUB_OUTPUT"
+        echo "issues=$ISSUES" >> "$GITHUB_OUTPUT"
+        echo "report-url=https://seoscoreapi.com/report/$DOMAIN" >> "$GITHUB_OUTPUT"
 
-        echo "## 🔍 SEO Audit Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
-        echo "| URL | ${{ inputs.url }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Score | **$SCORE/100** |" >> $GITHUB_STEP_SUMMARY
-        echo "| Grade | **$GRADE** |" >> $GITHUB_STEP_SUMMARY
-        echo "| Issues | $ISSUES |" >> $GITHUB_STEP_SUMMARY
-        echo "| Threshold | ${{ inputs.threshold }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Full Report | [View →](https://seoscoreapi.com/report/$DOMAIN) |" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        if [ "$ISSUES" -gt 0 ]; then
-          echo "### Top Issues" >> $GITHUB_STEP_SUMMARY
-          echo "$RESULT" | jq -r '.priorities[:5][] | "- **[\(.severity)]** \(.issue)"' >> $GITHUB_STEP_SUMMARY
-        fi
+        {
+          echo "## 🔍 SEO Audit Results"
+          echo ""
+          echo "| Metric | Value |"
+          echo "|--------|-------|"
+          echo "| URL | $SSA_URL |"
+          echo "| Score | **$SCORE/100** |"
+          echo "| Grade | **$GRADE** |"
+          echo "| Issues | $ISSUES |"
+          echo "| Threshold | $SSA_THRESHOLD |"
+          echo "| Full Report | [View →](https://seoscoreapi.com/report/$DOMAIN) |"
+          echo ""
+          if [ "$ISSUES" -gt 0 ]; then
+            echo "### Top Issues"
+            echo "$RESULT" | jq -r '.priorities[:5][] | "- **[\(.severity)]** \(.issue)"'
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
 
         echo ""
         echo "SEO Score: $SCORE/100 ($GRADE) — $ISSUES issues"
 
-        if [ "${{ inputs.fail-on-threshold }}" = "true" ] && [ "$SCORE" -lt "${{ inputs.threshold }}" ]; then
-          echo "::error::SEO score $SCORE is below threshold ${{ inputs.threshold }}"
+        # Scores are decimals (e.g. 97.56); compare as numbers, not with [ -lt ].
+        if [ "$SSA_FAIL" = "true" ] && awk -v s="$SCORE" -v t="$SSA_THRESHOLD" 'BEGIN { exit !(s + 0 < t + 0) }'; then
+          echo "::error::SEO score $SCORE is below threshold $SSA_THRESHOLD"
           exit 1
         fi
+
+    - name: Run Deep Site Audit
+      id: deep
+      if: ${{ inputs.deep-audit == 'true' }}
+      shell: bash
+      env:
+        SSA_URL: ${{ inputs.url }}
+        SSA_API_KEY: ${{ inputs.api-key }}
+        SSA_BASE_URL: ${{ inputs.deep-audit-base-url }}
+        SSA_BUSINESS_TYPE: ${{ inputs.deep-audit-business-type }}
+        SSA_TIMEOUT: ${{ inputs.deep-audit-timeout }}
+        SSA_FAIL_ON_HIGH: ${{ inputs.deep-audit-fail-on-high }}
+      run: bash "$GITHUB_ACTION_PATH/scripts/deep-audit.sh"
