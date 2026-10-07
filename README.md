@@ -119,14 +119,14 @@ The standard audit covers, among others:
 ## Getting an API Key
 
 1. Visit [seoscoreapi.com](https://seoscoreapi.com)
-2. Sign up for a free key (5 audits/day) or a paid plan
+2. Sign up for a free key (2 audits/day) or a paid plan
 3. Add as `SEO_SCORE_API_KEY` in your repo secrets
 
 ## Pricing
 
 | Plan | Price | Audits |
 |------|-------|--------|
-| Free | $0 | 5/day |
+| Free | $0 | 2/day |
 | Starter | $5/mo | 200/mo |
 | Basic | $15/mo | 1,000/mo |
 | Pro | $39/mo | 5,000/mo |

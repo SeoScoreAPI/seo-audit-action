@@ -2,7 +2,7 @@
 
 Run automated SEO audits on your website as part of your CI/CD pipeline. Catch SEO regressions before they ship to production.
 
-Powered by [SEO Score API](https://seoscoreapi.com) — 28 checks across meta, technical, social, performance, and accessibility.
+Powered by [SEO Score API](https://seoscoreapi.com) : 80+ checks across meta, technical, social, performance, accessibility and AI readability.
 
 ## Usage
 
@@ -70,12 +70,12 @@ jobs:
 ## Getting an API Key
 
 1. Visit [seoscoreapi.com](https://seoscoreapi.com)
-2. Sign up for a free key (5 audits/day) or a paid plan
+2. Sign up for a free key (2 audits/day) or a paid plan
 3. Add as `SEO_SCORE_API_KEY` in your repo secrets
 
 ## What Gets Checked
 
-28 checks across 5 categories:
+The standard audit covers, among others:
 - **Meta & Content** — title, description, headings, readability, alt text
 - **Technical** — HTTPS, SSL, canonical, structured data, sitemap
 - **Social** — Open Graph, Twitter Cards, favicon
